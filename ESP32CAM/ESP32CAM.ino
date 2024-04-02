@@ -1,5 +1,6 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <ArduinoJson.h>
 
 //
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
@@ -32,6 +33,8 @@
 //#define CAMERA_MODEL_DFRobot_Romeo_ESP32S3 // Has PSRAM
 #include "camera_pins.h"
 
+#define FLASH_GPIO_NUM 4
+
 // ===========================
 // Enter your WiFi credentials
 // ===========================
@@ -41,7 +44,7 @@ const char* password = "15012002";
 // ===========================
 // Enter your server information
 // ===========================
-String serverName = "192.168.1.5";
+String serverName = "192.168.1.9";
 const int serverPort = 3000;
 String serverPath = "/arduino//postFile";
 String fileName = "file";
@@ -148,10 +151,12 @@ void setup() {
     s->set_vflip(s, 1);
   #endif
 
-  // Setup LED FLash if LED pin is defined in camera_pins.h
-  #if defined(LED_GPIO_NUM)
-    setupLedFlash(LED_GPIO_NUM);
-  #endif
+  // // Setup LED FLash if LED pin is defined in camera_pins.h
+  // #if defined(LED_GPIO_NUM)
+    // setupLedFlash(LED_GPIO_NUM);
+  // #endif
+
+  pinMode(FLASH_GPIO_NUM, OUTPUT);
 
   WiFi.begin(ssid, password);
   WiFi.setSleep(false);
@@ -242,10 +247,42 @@ String takePicture() {
     Serial.println();
     client.stop();
     Serial.println(responseBody);
+
+    bool isError = getErrorValue(responseBody);
+    Serial.print("Error value: ");
+    Serial.println(isError);
+
+    if(isError == false) {
+      Serial.println("FLASH ON");
+      digitalWrite(FLASH_GPIO_NUM, HIGH);
+      delay(2000);
+      digitalWrite(FLASH_GPIO_NUM, LOW);
+      delay(2000);
+    } else {
+      Serial.println("Flash off");
+    }
   } 
   else {
     responseBody = "Connection to " + serverName +  " failed.";
     Serial.println(responseBody);
   }
   return responseBody;
+}
+
+bool getErrorValue(String jsonString) {
+  // Khởi tạo bộ đệm để lưu trữ tài nguyên
+  StaticJsonDocument<200> doc;
+
+  // Phân tích chuỗi JSON vào tài nguyên
+  DeserializationError error = deserializeJson(doc, jsonString);
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.f_str());
+    return true; // Nếu có lỗi trong quá trình phân tích JSON, trả về true
+  }
+
+  // Lấy giá trị của trường "error"
+  bool isError = doc["error"];
+
+  return isError;
 }

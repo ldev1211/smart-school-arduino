@@ -35,12 +35,14 @@ const int MAX_TIMES_TRY_CONNECT_WIFI = 100;
 const int DELAY_TIME_CONNECT_WIFI = 200;
 const int FOLDER_CLASS_NAME = 1;
 const int FOLDER_STUDENT_NAME = 2;
+const int MAX_AUDIO = 30;
 
 // function prototype
 void handleOnHomePageRequest();
 void handleOnConnectWifi();
 void handleOnNotifyRequest();
-void updateScreen(String studentCode, String classCode);
+void handleOnChangeSpeakerStatus();
+void updateScreen(String studentCode);
 void playAudio(int folderNum, int trackNum);
 String generateResponseJson(bool isSuccessNotify);
 String generateHomePageHtml();
@@ -52,7 +54,7 @@ String localIP_Wifi = ""; // IP address of the ESP8266 on the local network
 
 bool isWifiConnected = false;
 bool canPlayAudio = true;
-int volume = 30;
+int volume = 25;
 
 // Create the Player object
 // DFRobotDFPlayerMini player;
@@ -93,6 +95,7 @@ void setup()
   server.on("/", handleOnHomePageRequest);
   server.on("/connect", HTTP_POST, handleOnConnectWifi);
   server.on("/notify", HTTP_POST, handleOnNotifyRequest);
+  server.on("/speaker", HTTP_GET, handleOnChangeSpeakerStatus);
   server.begin();
 
   display.clearDisplay();
@@ -105,6 +108,20 @@ void setup()
 void loop()
 {
   server.handleClient();
+}
+
+void handleOnChangeSpeakerStatus()
+{
+  // Lấy dữ liệu GET từ request
+  canPlayAudio = server.arg("speaker_status") == "true" ? true : false;
+  volume = server.arg("speaker_volume").toInt();
+
+  Serial.println("Speaker Status: " + String(canPlayAudio));
+  Serial.println("Volume: " + String(volume));
+
+  String json = generateResponseJson(true);
+  server.send(200, "application/json", json);
+  return;
 }
 
 void handleOnHomePageRequest()
@@ -144,15 +161,16 @@ void handleOnNotifyRequest()
     return;
   }
 
-  updateScreen(studentCode, classCode);
-
-  playAudio(FOLDER_STUDENT_NAME, audioStudentNameIndex);
-  playAudio(FOLDER_CLASS_NAME, audioClassNameIndex);
-
   String json = generateResponseJson(true);
 
   // Send the JSON response
   server.send(200, "application/json", json);
+  
+  updateScreen(studentCode);
+
+  playAudio(FOLDER_STUDENT_NAME, audioStudentNameIndex);
+  playAudio(FOLDER_CLASS_NAME, audioClassNameIndex);
+
 }
 
 void handleOnConnectWifi()
@@ -195,7 +213,7 @@ void handleOnConnectWifi()
   server.send(302, "text/html", html);
 }
 
-void updateScreen(String studentCode, String classCode)
+void updateScreen(String studentCode)
 {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -204,18 +222,16 @@ void updateScreen(String studentCode, String classCode)
   display.println("Welcome");
   display.setCursor(5, 25);
   display.println(studentCode);
-  display.setCursor(30, 45);
-  display.println(classCode);
   display.display();
 }
 
 void playAudio(int folderNum, int trackNum)
 {
   // Start communication with DFPlayer Mini
-  if (player.begin(softwareSerial))
+  if (player.begin(softwareSerial) && canPlayAudio)
   {
     // Set volume to maximum (0 to 30).
-    player.volume(30);
+    player.volume(volume);
     // Play the specified MP3 file on the SD card
     player.playFolder(folderNum, trackNum);
     Serial.print("Playing: ");
@@ -224,7 +240,7 @@ void playAudio(int folderNum, int trackNum)
     // // Wait until audio finishes playing
     while (player.isPlaying())
     {
-      delay(10); // Delay for a short time
+      delay(5); // Delay for a short time
     }
   }
   else
@@ -269,8 +285,7 @@ String generateHomePageHtml()
   html += "<form action='/connect' method='POST'>";
   html += "<div class='input-group'><label for='ssid'>SSID:</label><input type='text' id='ssid' name='ssid' value='" + wifi_ssid + "' placeholder='Enter Wifi name' required /></div>";
   html += "<div class='input-group'><label for='password'>Password:</label><input type='text' id='password' name='password' value='" + wifi_password + "' placeholder='Enter Wifi password' required /></div>";
-  html += "<input id = 'btnConnect' type='submit' value='Kết nối Wifi' class="
-          ">";
+  html += "<input id = 'btnConnect' type='submit' value='Kết nối Wifi' class='btn-submit'>";
   html += "</form>";
   html += "<table style='width:60%; border: 1px solid #00aeff; padding: 10px;'>";
   html += "<tr><th></th><th></th></tr>";
@@ -290,6 +305,19 @@ String generateHomePageHtml()
     html += "<tr><td>Địa chỉ IP</td><td>?-?-?-?</td></tr>";
   }
   html += "</table>";
+
+  if (canPlayAudio)
+  {
+    html += "<div class='input-group mt-20'><div class='switch'><label for='checkboxCamera'>Speaker:</label><input type='checkbox' id='checkboxCamera' name='checkboxCamera' class='default-action' onclick='changeStatusLabel(this)' checked/><label class='slider' for='checkboxCamera'></label><span id='camera-status'>ON</span></div></div>";
+  }
+  else
+  {
+    html += "<div class='input-group mt-20'><div class='switch'><label for='checkboxCamera'>Speaker:</label><input type='checkbox' id='checkboxCamera' name='checkboxCamera' class='default-action' onclick='changeStatusLabel(this)'/><label class='slider' for='checkboxCamera'></label><span id='camera-status'>OFF</span></div></div>";
+  }
+
+  html += "<div class='input-group flex-direction-row mt-20'><label for='speaker-volume-range'>Volume:</label><input id='speaker-volume-range' name='speaker-volume-range' type='range' min='0' max='" + String(MAX_AUDIO) + "' value='" + String(volume) + "' class='' step='1' onchange='showVal(this.value)' oninput='showVal(this.value)'><span id='speaker-volume'>" + String(volume) + "</span></div>";
+
+  html += "<input id = 'btn-change-speaker-status' type='submit' value='Cập nhật' class='btn-submit'>";
   html += HomePageScript;
 
   return html;

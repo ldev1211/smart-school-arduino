@@ -1,0 +1,309 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoJson.h>
+
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#include "HtmlStyleConfig.h"
+#include "SoftwareSerial.h"
+#include "DFPlayerMini_Fast.h"
+#include "AudioDataIndex.h"
+
+// Set your Static IP address
+IPAddress localIP_AP(192, 168, 200, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress gatewayWifi(192, 168, 1, 1);
+
+// Use pins 2 and 3 to communicate with DFPlayer Mini
+static const uint8_t PIN_MP3_TX = 3;  // Connects to module's RX
+static const uint8_t PIN_MP3_RX = D3; // Connects to module's TX
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define OLED_MOSI 13
+#define OLED_CLK 14
+#define OLED_DC 5
+#define OLED_CS 15
+#define OLED_RESET 4
+
+const int MAX_TIMES_TRY_CONNECT_WIFI = 100;
+const int DELAY_TIME_CONNECT_WIFI = 200;
+const int FOLDER_CLASS_NAME = 1;
+const int FOLDER_STUDENT_NAME = 2;
+
+// function prototype
+void handleOnHomePageRequest();
+void handleOnConnectWifi();
+void handleOnNotifyRequest();
+void updateScreen(String studentCode, String classCode);
+void playAudio(int folderNum, int trackNum);
+String generateResponseJson(bool isSuccessNotify);
+String generateHomePageHtml();
+int getIndexAudio(String list[], String targetString);
+
+String wifi_ssid = "";
+String wifi_password = "";
+String localIP_Wifi = ""; // IP address of the ESP8266 on the local network
+
+bool isWifiConnected = false;
+bool canPlayAudio = true;
+int volume = 30;
+
+// Create the Player object
+// DFRobotDFPlayerMini player;
+DFPlayerMini_Fast player;
+SoftwareSerial softwareSerial(PIN_MP3_RX, PIN_MP3_TX);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
+ESP8266WebServer server(80);
+
+void setup()
+{
+  // Init USB serial port for debugging
+  Serial.begin(115200);
+  // Init serial port for DFPlayer Mini
+  softwareSerial.begin(9600);
+  pinMode(D3, INPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+    return;
+  }
+
+  if (!WiFi.softAPConfig(localIP_AP, localIP_AP, subnet))
+  {
+    Serial.println("AP Failed to configure");
+    return;
+  }
+
+  while (!WiFi.softAP("ESP8266 WiFI", "12345678"))
+  {
+    Serial.print(".");
+    delay(300);
+  }
+
+  Serial.print("Ap IP address: ");
+  Serial.println(WiFi.softAPIP());
+
+  server.on("/", handleOnHomePageRequest);
+  server.on("/connect", HTTP_POST, handleOnConnectWifi);
+  server.on("/notify", HTTP_POST, handleOnNotifyRequest);
+  server.begin();
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(20, 30);
+  display.println("WelCome!");
+  display.display();
+}
+void loop()
+{
+  server.handleClient();
+}
+
+void handleOnHomePageRequest()
+{
+  // Send the JSON response
+  String html = generateHomePageHtml();
+  server.send(200, "text/html", html);
+}
+
+void handleOnNotifyRequest()
+{
+  // Lấy dữ liệu POST từ request
+  String classCode = server.arg("class_code");
+  String studentCode = server.arg("student_code");
+
+  // Hiển thị dữ liệu POST trên Serial Monitor
+  Serial.println("Class Code: " + classCode);
+  Serial.println("Student Code: " + studentCode);
+
+  if (classCode.length() == 0 || studentCode.length() == 0)
+  {
+    String json = generateResponseJson(false);
+    server.send(404, "application/json", json);
+    return;
+  }
+
+  int audioClassNameIndex = getIndexAudio(ClassCodeAudio, classCode);
+  int audioStudentNameIndex = getIndexAudio(StudentCodeAudio, studentCode);
+
+  Serial.println("audioClassNameIndex: " + String(audioClassNameIndex));
+  Serial.println("audioStudentNameIndex: " + String(audioStudentNameIndex));
+
+  if (audioClassNameIndex == 0 || audioStudentNameIndex == 0)
+  {
+    String json = generateResponseJson(false);
+    server.send(404, "application/json", json);
+    return;
+  }
+
+  updateScreen(studentCode, classCode);
+
+  playAudio(FOLDER_STUDENT_NAME, audioStudentNameIndex);
+  playAudio(FOLDER_CLASS_NAME, audioClassNameIndex);
+
+  String json = generateResponseJson(true);
+
+  // Send the JSON response
+  server.send(200, "application/json", json);
+}
+
+void handleOnConnectWifi()
+{
+  // Lấy dữ liệu POST từ request
+  wifi_ssid = server.arg("ssid");
+  wifi_password = server.arg("password");
+
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(wifi_ssid);
+  Serial.print("Password: ");
+  Serial.println(wifi_password);
+
+  int times = 0; // time try to connect wifi
+  WiFi.begin(wifi_ssid, wifi_password);
+  while (WiFi.status() != WL_CONNECTED && times < MAX_TIMES_TRY_CONNECT_WIFI)
+  {
+    delay(DELAY_TIME_CONNECT_WIFI);
+    Serial.print(".");
+    times++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    isWifiConnected = true;
+    localIP_Wifi = WiFi.localIP().toString();
+    Serial.println("Connected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    isWifiConnected = false;
+    Serial.println("Failed to connect to WiFi");
+  }
+
+  // Send the JSON response
+  String html = generateHomePageHtml();
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/html", html);
+}
+
+void updateScreen(String studentCode, String classCode)
+{
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(20, 5);
+  display.println("Welcome");
+  display.setCursor(5, 25);
+  display.println(studentCode);
+  display.setCursor(30, 45);
+  display.println(classCode);
+  display.display();
+}
+
+void playAudio(int folderNum, int trackNum)
+{
+  // Start communication with DFPlayer Mini
+  if (player.begin(softwareSerial))
+  {
+    // Set volume to maximum (0 to 30).
+    player.volume(30);
+    // Play the specified MP3 file on the SD card
+    player.playFolder(folderNum, trackNum);
+    Serial.print("Playing: ");
+    Serial.println(trackNum);
+
+    // // Wait until audio finishes playing
+    while (player.isPlaying())
+    {
+      delay(10); // Delay for a short time
+    }
+  }
+  else
+  {
+    Serial.println("Connecting to DFPlayer Mini failed!");
+  }
+}
+
+String generateResponseJson(bool isSuccessNotify)
+{
+  // tao doi tuong JSON
+  StaticJsonDocument<200> doc;
+  // tao bo dem de luu tru du lieu JSON
+  char jsonBuffer[200];
+
+  // neu thong bao thanh cong
+  if (isSuccessNotify)
+  {
+    // them du lieu vao doi tuong JSON
+    doc["message"] = "Thông báo thành công!";
+    doc["error"] = false;
+  }
+  else
+  {
+    // them du lieu vao doi tuong JSON
+    doc["message"] = "Thông báo thất bại!";
+    doc["error"] = true;
+  }
+
+  // chuyen doi doi tuong JSON sang chuoi JSON
+  serializeJson(doc, jsonBuffer);
+
+  // tra ve chuoi JSON
+  return jsonBuffer;
+}
+
+String generateHomePageHtml()
+{
+  String html = HomePageStyle;
+  html += "<h1 style='text-align: center; font-size: 40px; margin-top: 100px'>Cấu hình module ESP8266</h1>";
+  html += "<h2 style='text-align: center; font-size: 20px; margin-top: 20px'>Hãy nhập thông tin wifi</h2>";
+  html += "<form action='/connect' method='POST'>";
+  html += "<div class='input-group'><label for='ssid'>SSID:</label><input type='text' id='ssid' name='ssid' value='" + wifi_ssid + "' placeholder='Enter Wifi name' required /></div>";
+  html += "<div class='input-group'><label for='password'>Password:</label><input type='text' id='password' name='password' value='" + wifi_password + "' placeholder='Enter Wifi password' required /></div>";
+  html += "<input id = 'btnConnect' type='submit' value='Kết nối Wifi' class="
+          ">";
+  html += "</form>";
+  html += "<table style='width:60%; border: 1px solid #00aeff; padding: 10px;'>";
+  html += "<tr><th></th><th></th></tr>";
+
+  if (isWifiConnected)
+  {
+    html += "<tr><td>Trạng thái</td><td style='font-weight: bold; color: rgb(0, 255, 0);'>Đã kết nối</td></tr>";
+    html += "<tr><td>Tên wifi</td><td>" + wifi_ssid + "</td></tr>";
+    html += "<tr><td>Mật khẩu wifi</td><td>" + wifi_password + "</td></tr>";
+    html += "<tr><td>Địa chỉ IP</td><td>" + localIP_Wifi + "</td></tr>";
+  }
+  else
+  {
+    html += "<tr><td>Trạng thái</td><td style='font-weight: bold; color: rgb(255, 0, 0);'>Chưa kết nối</td></tr>";
+    html += "<tr><td>Tên wifi</td><td>?-?-?-?</td></tr>";
+    html += "<tr><td>Mật khẩu wifi</td><td>?-?-?-?</td></tr>";
+    html += "<tr><td>Địa chỉ IP</td><td>?-?-?-?</td></tr>";
+  }
+  html += "</table>";
+  html += HomePageScript;
+
+  return html;
+}
+
+// return index of audio file in SD card
+int getIndexAudio(String list[], String targetString)
+{
+  for (int i = 0; i < sizeof(list); i++)
+  {
+    if (list[i] == targetString)
+    {
+      return i + 1;
+    }
+  }
+  return 0;
+}

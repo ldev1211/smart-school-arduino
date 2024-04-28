@@ -19,8 +19,11 @@ IPAddress subnet(255, 255, 255, 0);
 IPAddress gatewayWifi(192, 168, 1, 1);
 
 // Use pins 2 and 3 to communicate with DFPlayer Mini
-static const uint8_t PIN_MP3_TX = 3;  // Connects to module's RX
+static const uint8_t PIN_MP3_TX = D6; // Connects to module's RX
 static const uint8_t PIN_MP3_RX = D3; // Connects to module's TX
+
+#define RX_ESPCAM 10
+#define TX_ESPCAM 9
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -42,31 +45,36 @@ void handleOnHomePageRequest();
 void handleOnConnectWifi();
 void handleOnNotifyRequest();
 void handleOnChangeSpeakerStatus();
-void updateScreen(String studentCode);
+void updateScreen(String studentCode, String className, String studentName);
 void playAudio(int folderNum, int trackNum);
 String generateResponseJson(bool isSuccessNotify);
 String generateHomePageHtml();
-int getIndexAudio(String list[], String targetString);
+int getIndexAudio(std::map<String, String> list, String targetString);
 
-String wifi_ssid = "";
-String wifi_password = "";
+String wifi_ssid = "Toan Thang";
+String wifi_password = "15012002";
 String localIP_Wifi = ""; // IP address of the ESP8266 on the local network
 
 bool isWifiConnected = false;
 bool canPlayAudio = true;
 int volume = 25;
+unsigned long lastTimeNotify = 0; // Last time the notification on screen was implemented
+bool hasNotify = false;           // Check if the notification on screen has been implemented
+int timeNotify = 20000;            // Time to notify on screen in milliseconds
 
 // Create the Player object
 // DFRobotDFPlayerMini player;
 DFPlayerMini_Fast player;
 SoftwareSerial softwareSerial(PIN_MP3_RX, PIN_MP3_TX);
+SoftwareSerial esp32Serial(RX_ESPCAM, TX_ESPCAM);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
 ESP8266WebServer server(80);
 
 void setup()
 {
   // Init USB serial port for debugging
-  Serial.begin(115200);
+  Serial.begin(9600);
+  // esp32Serial.begin(9600);
   // Init serial port for DFPlayer Mini
   softwareSerial.begin(9600);
   pinMode(D3, INPUT);
@@ -98,16 +106,32 @@ void setup()
   server.on("/speaker", HTTP_GET, handleOnChangeSpeakerStatus);
   server.begin();
 
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(2);
-  display.setCursor(20, 30);
-  display.println("WelCome!");
-  display.display();
+  displayDefaultText("WelCome!");
+
+  connectToWifi();
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 }
 void loop()
 {
   server.handleClient();
+  // Serial.println("ESP32: ");
+  // Serial.println(esp32Serial.readString());
+  // while(esp32Serial.available())
+  // {
+  //   Serial.print("ESP32: ");
+  //   Serial.println(esp32Serial.read());
+  // }
+
+  if (hasNotify)
+  {
+    unsigned long currentTime = millis();
+    if (currentTime - lastTimeNotify >= timeNotify)
+    {
+      displayDefaultText("WelCome!");
+    }
+  }
 }
 
 void handleOnChangeSpeakerStatus()
@@ -148,8 +172,8 @@ void handleOnNotifyRequest()
     return;
   }
 
-  int audioClassNameIndex = getIndexAudio(ClassCodeAudio, classCode);
-  int audioStudentNameIndex = getIndexAudio(StudentCodeAudio, studentCode);
+  int audioClassNameIndex = getIndexAudio(ClassCodeAudioMap, classCode);
+  int audioStudentNameIndex = getIndexAudio(StudentCodeAudioMap, studentCode);
 
   Serial.println("audioClassNameIndex: " + String(audioClassNameIndex));
   Serial.println("audioStudentNameIndex: " + String(audioStudentNameIndex));
@@ -161,16 +185,21 @@ void handleOnNotifyRequest()
     return;
   }
 
-  String json = generateResponseJson(true);
-
   // Send the JSON response
+  String json = generateResponseJson(true);
   server.send(200, "application/json", json);
-  
-  updateScreen(studentCode);
+
+  String className = ClassCodeAudioMap[classCode];
+  String studentName = StudentCodeAudioMap[studentCode];
+
+  // 
+  hasNotify = true;
+  lastTimeNotify = millis();
+
+  updateScreen(studentCode, className, studentName);
 
   playAudio(FOLDER_STUDENT_NAME, audioStudentNameIndex);
   playAudio(FOLDER_CLASS_NAME, audioClassNameIndex);
-
 }
 
 void handleOnConnectWifi()
@@ -184,28 +213,7 @@ void handleOnConnectWifi()
   Serial.print("Password: ");
   Serial.println(wifi_password);
 
-  int times = 0; // time try to connect wifi
-  WiFi.begin(wifi_ssid, wifi_password);
-  while (WiFi.status() != WL_CONNECTED && times < MAX_TIMES_TRY_CONNECT_WIFI)
-  {
-    delay(DELAY_TIME_CONNECT_WIFI);
-    Serial.print(".");
-    times++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    isWifiConnected = true;
-    localIP_Wifi = WiFi.localIP().toString();
-    Serial.println("Connected to WiFi");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-  }
-  else
-  {
-    isWifiConnected = false;
-    Serial.println("Failed to connect to WiFi");
-  }
+  connectToWifi();
 
   // Send the JSON response
   String html = generateHomePageHtml();
@@ -213,15 +221,21 @@ void handleOnConnectWifi()
   server.send(302, "text/html", html);
 }
 
-void updateScreen(String studentCode)
+void updateScreen(String studentCode, String className, String studentName)
 {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(2);
   display.setCursor(20, 5);
   display.println("Welcome");
-  display.setCursor(5, 25);
-  display.println(studentCode);
+
+  display.setTextSize(1);
+  display.setCursor(0, 25);
+  display.println("MSSV : " + studentCode);
+  display.setCursor(0, 35);
+  display.println("Name : " + studentName);
+  display.setCursor(0, 45);
+  display.println("Class: " + className);
   display.display();
 }
 
@@ -324,14 +338,53 @@ String generateHomePageHtml()
 }
 
 // return index of audio file in SD card
-int getIndexAudio(String list[], String targetString)
+int getIndexAudio(std::map<String, String> list, String targetString)
 {
-  for (int i = 0; i < sizeof(list); i++)
+  int index = 0;
+
+  for (auto const &item : list)
   {
-    if (list[i] == targetString)
+    if (item.first == targetString)
     {
-      return i + 1;
+      return index + 1;
     }
+    index++;
   }
   return 0;
+}
+
+void connectToWifi()
+{
+  int times = 0; // time try to connect wifi
+  WiFi.begin(wifi_ssid, wifi_password);
+  while (WiFi.status() != WL_CONNECTED && times < MAX_TIMES_TRY_CONNECT_WIFI)
+  {
+    delay(DELAY_TIME_CONNECT_WIFI);
+    Serial.print(".");
+    times++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    isWifiConnected = true;
+    localIP_Wifi = WiFi.localIP().toString();
+    Serial.println("Connected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    isWifiConnected = false;
+    Serial.println("Failed to connect to WiFi");
+  }
+}
+
+void displayDefaultText(String text)
+{
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(20, 30);
+  display.println(text);
+  display.display();
 }

@@ -34,6 +34,7 @@
 // #define CAMERA_MODEL_DFRobot_FireBeetle2_ESP32S3 // Has PSRAM
 // #define CAMERA_MODEL_DFRobot_Romeo_ESP32S3 // Has PSRAM
 #include "camera_pins.h"
+#include "HtmlStyleConfig.h"
 
 #define FLASH_GPIO_NUM 4
 #define CAMERA_LED_NUM 33
@@ -55,57 +56,25 @@ const char *apSSID = "ESP32-AP"; // Tên của mạng Wi-Fi riêng của ESP32
 const char *apPassword = "";     // Mật khẩu của mạng Wi-Fi riêng
 const int apPort = 80;           // Cổng của Web Server trong chế độ AP
 
-const char *serverPath = "/arduino/postFile"; // Hằng số cho server path
-const char *fileName = "file";                // Hằng số cho file name
+const char *serverPath = "/arduino/postFile?room=1B18"; // Hằng số cho server path
+const char *fileName = "file";                          // Hằng số cho file name
 
 char ssid[32] = "Toan Thang";
 char password[32] = "15012002";
-char serverName[32] = "192.168.123.2";
+char serverName[32] = "192.168.1.3";
 int serverPort = 3000;
 int pictureInterval = 5000;
-bool isCameraOn = false;
+bool isCameraOn = true;
 
 unsigned long latestPicture = 0; // last time image was sent (in milliseconds)
-String styleSuccessfulPage = "";
-String styleHomePage = "";
 
 WebServer server(apPort); // Tạo đối tượng máy chủ với cổng apPort
 
 WiFiClient client;
 
-// void startCameraServer();
-// void setupLedFlash(int pin);
-
 void setup()
 {
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
-
-  styleHomePage += "<style>";
-  styleHomePage += "body { background-color: black; color: white; font-family: Arial, sans-serif; }";
-  styleHomePage += "form { width: 100%; display: flex; flex-direction: column; align-items: center; margin-top: 20px; }";
-  styleHomePage += "label { margin-bottom: 10px; font-size: 20px; }";
-  styleHomePage += ".input-group { width: 50%; display: flex; flex-direction: column; align-items: center; }";
-  styleHomePage += "input[type=\"text\"], input[type=\"number\"] { font-size: 15px; font-weight: bold; padding: 15px; width: 100%; padding-left: 30px; margin-bottom: 10px; }";
-  styleHomePage += "input[type=\"submit\"] { text-decoration: none; text-align: center; margin-top: 20px; padding: 10px; font-size: 20px; width: 20%; background-color: #4caf50; border: none; color: white; cursor: pointer; border-radius: 5px; }";
-  styleHomePage += "input[type=\"submit\"]:hover { background-color: #216425; }";
-  styleHomePage += ".switch { width: 100%; position: relative; line-height: 22px; font-size: 16px; height: 22px; }";
-  styleHomePage += ".switch input { outline: 0; opacity: 0; width: 0; height: 0; }";
-  styleHomePage += ".slider { width: 50px; height: 30px; border-radius: 22px; cursor: pointer; background-color: grey; }";
-  styleHomePage += ".slider, .slider:before { display: inline-block; transition: 0.4s; }";
-  styleHomePage += ".slider:before { position: relative; content: \"\"; border-radius: 50%; height: 16px; width: 16px; left: 4px; top: 5px; background-color: #fff; }";
-  styleHomePage += "input:checked + .slider { background-color: #ff3034; }";
-  styleHomePage += "input:checked + .slider:before { -webkit-transform: translateX(26px); transform: translateX(26px); }";
-  styleHomePage += "</style>";
-
-  styleSuccessfulPage += "<style>";
-  styleSuccessfulPage += "body { background-color: black; color: white; font-family: Arial, sans-serif; width: 100%; display: flex; flex-direction: column; align-items: center; }";
-  styleSuccessfulPage += "label { margin-bottom: 10px; font-size: 20px; }";
-  styleSuccessfulPage += "input[type=\"text\"], input[type=\"number\"] { font-size: 15px; font-weight: bold; padding: 15px; padding-left: 30px; margin-bottom: 10px; width: 50%; }";
-  styleSuccessfulPage += "a {text-decoration: none; text-align: center; padding: 10px; font-size: 20px; width: 20%; background-color: #4caf50; border: none; color: white; cursor: pointer; border-radius: 5px; }";
-  styleSuccessfulPage += "a:hover { background-color: #216425; }";
-  styleSuccessfulPage += "</style>";
+  Serial.begin(9600);
 
   // config camera
   configCamera();
@@ -115,9 +84,36 @@ void setup()
 
   pinMode(CAMERA_LED_NUM, OUTPUT);
 
-  turnOffCamera();
+  // startAPMode();
+  Serial.println("Starting AP mode...");
 
-  startAPMode();
+  // config static IP for ESP32 in AP mode
+  if (!WiFi.softAPConfig(staticIP, staticIP, subnet))
+  {
+    Serial.println("AP failed to configure");
+    return;
+  }
+
+  while (!WiFi.softAP(apSSID, apPassword))
+  {
+    Serial.print(".");
+    delay(300);
+  }
+
+  Serial.println("AP mode started successfully!!");
+  Serial.print("AP address: ");
+  Serial.println(WiFi.softAPIP());
+
+  connectToWifi();
+
+  server.on("/", HTTP_GET, handleOnHomePageRequest);
+  server.on("/config", HTTP_POST, handleConfigOnAPMode);
+  server.on("/config", HTTP_GET, []() {
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "");
+  });
+
+  server.begin();
 }
 
 void loop()
@@ -148,6 +144,8 @@ String takePicture()
     if (captureFailedTimes > MAX_TIMES_TO_CAPTURE_IMAGE_FAILED)
     {
       Serial.println("Capture failed too many times. Restarting device...");
+      flashing(1000);
+      flashing(1000);
       ESP.restart();
     }
     Serial.println("Camera capture failed");
@@ -160,6 +158,9 @@ String takePicture()
 
   if (client.connect(serverName, serverPort))
   {
+    // turn off camera
+    turnOffCamera();
+
     Serial.println("Connection successful!");
     String boundary = "--MK--";
     String head = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + ".jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
@@ -234,13 +235,19 @@ String takePicture()
     {
       // send image successful
       Serial.println();
-      Serial.println("Send image successful");
-      flashing(500);
+      Serial.println("Nhan dien thanh cong");
+      flashing(100);
+
+      // reset capture failed times
+      captureFailedTimes = 0;
     }
     else
     {
-      Serial.println("Send image failed");
+      Serial.println("Nhan dien that bai!");
     }
+
+    // turn on camera
+    turnOnCamera();
   }
   else
   {
@@ -268,6 +275,9 @@ bool getErrorValue(String responseBody)
 
   // Lấy giá trị của trường "error"
   bool isError = doc["error"];
+
+  Serial.print("Error: ");
+  Serial.println(doc["error"].as<String>());
 
   return isError;
 }
@@ -383,32 +393,138 @@ void configCamera()
   Serial.println();
 }
 
-void startAPMode()
+void handleOnHomePageRequest()
 {
-  Serial.println("Starting AP mode...");
-  // Khởi động ESP32 ở chế độ Access Point
-  // Thiết lập IP tĩnh cho chế độ AP
-  WiFi.softAPConfig(staticIP, staticIP, subnet);
-
-  // Khởi động ESP32 ở chế độ Access Point
-  WiFi.softAP(apSSID, apPassword);
-
-  Serial.println("AP mode started successfully!!");
-  Serial.println("Please type " + WiFi.softAPIP().toString() + " on your browser");
-
-  // Cài đặt các đường dẫn URI cho trang web cấu hình
-  server.on("/", HTTP_GET, handleRootOnAPMode);
-  server.on("/config", HTTP_POST, handleConfigOnAPMode);
-
-  server.begin();
-
-  flashing(500);
-  flashing(500);
-  flashing(500);
-  Serial.println();
+  String html = generateHomePageHtml();
+  server.send(200, "text/html", html);
 }
 
-void handleRootOnAPMode()
+void handleConfigOnAPMode()
+{
+  // Xử lý yêu cầu cấu hình
+  if (server.method() == HTTP_POST)
+  {
+    String newSSID = server.arg("ssid");
+    String newPassword = server.arg("password");
+    String newServerName = server.arg("serverName");
+    int newServerPort = server.arg("serverPort").toInt();
+    int newPictureInterval = server.arg("pictureInterval").toInt();
+
+    // Lấy giá trị trạng thái của checkbox camera
+    bool newCameraStatus = server.hasArg("checkboxCamera");
+
+    // Lưu giá trị cấu hình vào biến tương ứng
+    newSSID.toCharArray(ssid, sizeof(ssid));
+    newPassword.toCharArray(password, sizeof(password));
+    newServerName.toCharArray(serverName, sizeof(serverName));
+    serverPort = newServerPort;
+    pictureInterval = newPictureInterval;
+
+    if (newCameraStatus == true)
+    {
+      turnOnCamera();
+    }
+    else
+    {
+      turnOffCamera();
+    }
+
+    bool isSuccess = connectToWifi();
+
+    if (isSuccess)
+    {
+      Serial.println("Gui bieu mau thanh cong!!");
+      String message = "Connect to wifi " + String(ssid) + " successfully!!";
+      // server.send(200, "text/plain", "Gui bieu mau thanh cong!!");
+      goToResultPage(message, 200);
+    }
+    else
+    {
+      Serial.println("Gui bieu mau that bai!!");
+      String message = "Connect to wifi " + String(ssid) + " successfully!!";
+      goToResultPage(message, 200);
+    }
+  }
+  else
+  {
+    server.send(400, "text/plain", "Yêu cầu không hợp lệ");
+  }
+}
+
+bool connectToWifi()
+{
+  Serial.println("Starting Wifi mode...");
+
+  WiFi.begin(ssid, password);
+
+  Serial.println("Connecting to Wi-Fi...");
+  int connectTimes = 0; // Số lần kết nối đến WiFi
+  while (WiFi.status() != WL_CONNECTED && connectTimes < MAX_TIMES_TO_CONNECT)
+  {
+    delay(1000);
+    Serial.println(".");
+    connectTimes++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("Connected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    Serial.println("Failed to connect to WiFi");
+    return false;
+  }
+
+  return true;
+}
+
+void goToResultPage(String message, int code)
+{
+  String html = styleSuccessfulPage;
+  html += "<h1 style='text-align: center; margin-top: 100px;'>" + message + "</h1>";
+  html += "<a href='/'>Back to home</a>";
+
+  server.send(code, "text/html", html);
+}
+
+void turnOnFlashLight()
+{
+  ledcWrite(LEDC_CHANNEL, POWER_FLASH_MODE_ON);
+}
+
+void turnOffFlashLight()
+{
+  ledcWrite(LEDC_CHANNEL, POWER_FLASH_MODE_OFF);
+}
+
+void flashing(int delayTime)
+{
+  Serial.print("Flash on - ");
+  turnOnFlashLight();
+  delay(delayTime);
+  Serial.print("Flash off - ");
+  turnOffFlashLight();
+  delay(delayTime);
+}
+
+void turnOnCamera()
+{
+  isCameraOn = true;
+  digitalWrite(CAMERA_LED_NUM, LOW);
+  Serial.println("Camera turned on");
+}
+
+void turnOffCamera()
+{
+  isCameraOn = false;
+  digitalWrite(CAMERA_LED_NUM, HIGH);
+  Serial.println("Camera turned off");
+}
+
+String generateHomePageHtml()
 {
   // Trang web cơ bản để nhập dữ liệu cấu hình
   String html = styleHomePage;
@@ -448,126 +564,6 @@ void handleRootOnAPMode()
   html += "</div>";
   html += "<input type='submit' value='Submit'>";
   html += "</form>";
-  server.send(200, "text/html", html);
-}
 
-void handleConfigOnAPMode()
-{
-  // Xử lý yêu cầu cấu hình
-  if (server.method() == HTTP_POST)
-  {
-    String newSSID = server.arg("ssid");
-    String newPassword = server.arg("password");
-    String newServerName = server.arg("serverName");
-    int newServerPort = server.arg("serverPort").toInt();
-    int newPictureInterval = server.arg("pictureInterval").toInt();
-
-    // Lấy giá trị trạng thái của checkbox camera
-    bool newCameraStatus = server.hasArg("checkboxCamera");
-
-    // Lưu giá trị cấu hình vào biến tương ứng
-    newSSID.toCharArray(ssid, sizeof(ssid));
-    newPassword.toCharArray(password, sizeof(password));
-    newServerName.toCharArray(serverName, sizeof(serverName));
-    serverPort = newServerPort;
-    pictureInterval = newPictureInterval;
-
-    if (newCameraStatus == true)
-    {
-      turnOnCamera();
-    }
-    else
-    {
-      turnOffCamera();
-    }
-
-    startWifiMode();
-  }
-  else
-  {
-    server.send(400, "text/plain", "Yêu cầu không hợp lệ");
-  }
-}
-
-void startWifiMode()
-{
-  Serial.println("Starting Wifi mode...");
-
-  WiFi.begin(ssid, password);
-
-  Serial.println("Connecting to Wi-Fi...");
-  int connectTimes = 0; // Số lần kết nối đến WiFi
-  while (WiFi.status() != WL_CONNECTED && connectTimes < MAX_TIMES_TO_CONNECT)
-  {
-    delay(1000);
-    Serial.println(".");
-    connectTimes++;
-  }
-
-  if (connectTimes >= MAX_TIMES_TO_CONNECT)
-  {
-    Serial.println("Could not connect to Wi-Fi. Restarting AP mode...");
-    delay(1000);
-    startAPMode();
-    return;
-  }
-
-  Serial.println("Wifi mode started successfully!!");
-  Serial.println("Connect to wifi " + String(ssid) + " successfully!!");
-  Serial.println("Device ip on wifi " + String(ssid) + ": " + WiFi.localIP().toString());
-
-  if (isCameraOn)
-  {
-    turnOnCamera();
-  }
-  else
-  {
-    turnOffCamera();
-  }
-  Serial.println();
-
-  String message = "Connect to wifi " + String(ssid) + " successfully!!";
-  goToResultPage(message, 200);
-}
-
-void goToResultPage(String message, int code)
-{
-  String html = styleSuccessfulPage;
-  html += "<h1 style='text-align: center; margin-top: 100px;'>" + message + "</h1>";
-  html += "<a href='/'>Back to home</a>";
-  server.send(code, "text/html", html);
-}
-
-void turnOnFlashLight()
-{
-  ledcWrite(LEDC_CHANNEL, POWER_FLASH_MODE_ON);
-}
-
-void turnOffFlashLight()
-{
-  ledcWrite(LEDC_CHANNEL, POWER_FLASH_MODE_OFF);
-}
-
-void flashing(int delayTime)
-{
-  Serial.print("Flash on - ");
-  turnOnFlashLight();
-  delay(delayTime);
-  Serial.print("Flash off - ");
-  turnOffFlashLight();
-  delay(delayTime);
-}
-
-void turnOnCamera()
-{
-  isCameraOn = true;
-  digitalWrite(CAMERA_LED_NUM, LOW);
-  Serial.println("Camera turned on");
-}
-
-void turnOffCamera()
-{
-  isCameraOn = false;
-  digitalWrite(CAMERA_LED_NUM, HIGH);
-  Serial.println("Camera turned off");
+  return html;
 }

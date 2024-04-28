@@ -1,13 +1,17 @@
+#include <map>
 /*
     vị trí của của các item tương ứng với vị trí file âm thanh tên lớp học
     file âm thanh được lưu ở thư mục "01" trên thẻ sd
 */
-String ClassCodeAudio[] = {
-    "LH1", // Lập trình web
-    "LH2", // Lập trình di động
-    "LH3", // Lập trình nhúng
-    "LH4", // Lập trình game
-    "LH5", // Lập trình ứng dụng
+
+// create list with item as key is ClassCode and value is ClassName
+
+std::map<String, String> ClassCodeAudioMap = {
+    {"LH1", "Lap trinh web"},
+    {"LH2", "Lap trinh di dong"},
+    {"LH3", "Lap trinh nhung"},
+    {"LH4", "Lap trinh game"},
+    {"LH5", "Lap trinh ung dung"},
 };
 
 /*
@@ -15,8 +19,8 @@ String ClassCodeAudio[] = {
     file âm thanh được lưu ở thư mục "02" trên thẻ sd
 */
 
-String StudentCodeAudio[] = {
-    "N20DCPT009", // Lương Quốc Diễn
-    "N20DCPT021", // Đỗ Hùng Hảo
-    "N20DCPT044", // Trần Văn Ngạn
+std::map<String, String> StudentCodeAudioMap = {
+    {"N20DCPT009", "Luong Quoc Dien"},
+    {"N20DCPT021", "Do Hung Hao"},
+    {"N20DCPT044", "Tran Van Ngan"},
 };

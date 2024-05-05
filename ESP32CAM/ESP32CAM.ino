@@ -59,12 +59,13 @@ const int apPort = 80;           // Cổng của Web Server trong chế độ AP
 const char *serverPath = "/arduino/postFile?room=1B18"; // Hằng số cho server path
 const char *fileName = "file";                          // Hằng số cho file name
 
-char ssid[32] = "Toan Thang";
-char password[32] = "15012002";
-char serverName[32] = "192.168.1.3";
+char ssid[32] = "virus.exe";
+char password[32] = "123456789";
+char serverName[32] = "10.241.14.147";
 int serverPort = 3000;
 int pictureInterval = 5000;
 bool isCameraOn = true;
+bool isConnectedWifi = false;
 
 unsigned long latestPicture = 0; // last time image was sent (in milliseconds)
 
@@ -120,7 +121,7 @@ void loop()
 {
   server.handleClient();
 
-  if (isCameraOn)
+  if (isCameraOn && isConnectedWifi)
   {
     unsigned long currentMilliseconds = millis();
     if (currentMilliseconds - latestPicture >= pictureInterval)
@@ -471,14 +472,18 @@ bool connectToWifi()
     Serial.println("Connected to WiFi");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+
+    isConnectedWifi = true;
   }
   else
   {
     Serial.println("Failed to connect to WiFi");
     return false;
+
+    isConnectedWifi = false;
   }
 
-  return true;
+  return false;
 }
 
 void goToResultPage(String message, int code)

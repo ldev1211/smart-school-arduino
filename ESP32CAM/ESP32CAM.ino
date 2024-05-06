@@ -61,11 +61,12 @@ const char *fileName = "file";                          // Hằng số cho file 
 
 char ssid[32] = "virus.exe";
 char password[32] = "123456789";
-char serverName[32] = "10.241.14.147";
+char serverName[32] = "192.168.1.3";
 int serverPort = 3000;
 int pictureInterval = 5000;
 bool isCameraOn = true;
 bool isConnectedWifi = false;
+String localIP_Wifi = "";
 
 unsigned long latestPicture = 0; // last time image was sent (in milliseconds)
 
@@ -108,11 +109,8 @@ void setup()
   connectToWifi();
 
   server.on("/", HTTP_GET, handleOnHomePageRequest);
-  server.on("/config", HTTP_POST, handleConfigOnAPMode);
-  server.on("/config", HTTP_GET, []() {
-    server.sendHeader("Location", "/");
-    server.send(302, "text/plain", "");
-  });
+  server.on("/connect", HTTP_POST, handleConfigOnAPMode);
+  server.on("/config", HTTP_GET, handleOnChangeServerConfig);
 
   server.begin();
 }
@@ -140,6 +138,10 @@ String takePicture()
   String responseBody;
 
   camera_fb_t *fb = esp_camera_fb_get();
+
+  // turn off camera
+  turnOffCamera();
+
   if (!fb)
   {
     if (captureFailedTimes > MAX_TIMES_TO_CAPTURE_IMAGE_FAILED)
@@ -151,7 +153,14 @@ String takePicture()
     }
     Serial.println("Camera capture failed");
     captureFailedTimes++;
-    delay(1000);
+    delay(10);
+
+    blink(500);
+    blink(500);
+
+    // turn on camera
+    turnOnCamera();
+
     return "";
   }
 
@@ -159,8 +168,6 @@ String takePicture()
 
   if (client.connect(serverName, serverPort))
   {
-    // turn off camera
-    turnOffCamera();
 
     Serial.println("Connection successful!");
     String boundary = "--MK--";
@@ -246,15 +253,16 @@ String takePicture()
     {
       Serial.println("Nhan dien that bai!");
     }
-
-    // turn on camera
-    turnOnCamera();
   }
   else
   {
+    esp_camera_fb_return(fb);
     responseBody = String("Connection to ") + serverName + String(" failed.");
     Serial.println(responseBody);
   }
+
+  // turn on camera
+  turnOnCamera();
 
   Serial.println();
   return responseBody;
@@ -407,49 +415,63 @@ void handleConfigOnAPMode()
   {
     String newSSID = server.arg("ssid");
     String newPassword = server.arg("password");
-    String newServerName = server.arg("serverName");
-    int newServerPort = server.arg("serverPort").toInt();
-    int newPictureInterval = server.arg("pictureInterval").toInt();
-
-    // Lấy giá trị trạng thái của checkbox camera
-    bool newCameraStatus = server.hasArg("checkboxCamera");
 
     // Lưu giá trị cấu hình vào biến tương ứng
     newSSID.toCharArray(ssid, sizeof(ssid));
     newPassword.toCharArray(password, sizeof(password));
-    newServerName.toCharArray(serverName, sizeof(serverName));
-    serverPort = newServerPort;
-    pictureInterval = newPictureInterval;
-
-    if (newCameraStatus == true)
-    {
-      turnOnCamera();
-    }
-    else
-    {
-      turnOffCamera();
-    }
 
     bool isSuccess = connectToWifi();
 
-    if (isSuccess)
-    {
-      Serial.println("Gui bieu mau thanh cong!!");
-      String message = "Connect to wifi " + String(ssid) + " successfully!!";
-      // server.send(200, "text/plain", "Gui bieu mau thanh cong!!");
-      goToResultPage(message, 200);
-    }
-    else
-    {
-      Serial.println("Gui bieu mau that bai!!");
-      String message = "Connect to wifi " + String(ssid) + " successfully!!";
-      goToResultPage(message, 200);
-    }
+    // Send the JSON response
+    String html = generateHomePageHtml();
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/html", html);
   }
   else
   {
     server.send(400, "text/plain", "Yêu cầu không hợp lệ");
   }
+}
+
+void handleOnChangeServerConfig()
+{
+
+  // Lấy giá trị của các tham số từ URL
+  bool cameraStatus = server.arg("camera_status") == "true";
+  String newServerName = server.arg("serverName");
+  int newServerPort = server.arg("serverPort").toInt();
+  int newPictureInterval = server.arg("pictureInterval").toInt();
+
+  // Lưu giá trị cấu hình vào biến tương ứng
+
+  if (cameraStatus)
+  {
+    turnOnCamera();
+  }
+  else
+  {
+    turnOffCamera();
+  }
+
+  newServerName.toCharArray(serverName, sizeof(serverName));
+  serverPort = newServerPort;
+  pictureInterval = newPictureInterval;
+
+  // print
+
+  Serial.println("Server config has changed: ");
+  Serial.println("Camera status: " + String(cameraStatus));
+  Serial.println("Server name: " + newServerName);
+  Serial.println("Server port: " + String(newServerPort));
+  Serial.println("Picture interval: " + String(newPictureInterval));
+
+  // wifi info
+  Serial.println("SSID: " + String(ssid));
+  Serial.println("Password: " + String(password));
+
+  String json = generateResponseJson(true);
+  server.send(200, "application/json", json);
+  return;
 }
 
 bool connectToWifi()
@@ -473,6 +495,7 @@ bool connectToWifi()
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
+    localIP_Wifi = WiFi.localIP().toString();
     isConnectedWifi = true;
   }
   else
@@ -515,6 +538,14 @@ void flashing(int delayTime)
   delay(delayTime);
 }
 
+void blink(int delayTime)
+{
+  digitalWrite(CAMERA_LED_NUM, LOW);
+  delay(delayTime);
+  digitalWrite(CAMERA_LED_NUM, HIGH);
+  delay(delayTime);
+}
+
 void turnOnCamera()
 {
   isCameraOn = true;
@@ -532,43 +563,75 @@ void turnOffCamera()
 String generateHomePageHtml()
 {
   // Trang web cơ bản để nhập dữ liệu cấu hình
+
   String html = styleHomePage;
-  html += "<h1 style='text-align: center; font-size: 40px; margin-top: 100px'>Config ESP32</h1>";
-  html += "<form action='/config' method='post'>";
-  html += "<div class='input-group'>";
-  html += "<label for='ssid'>SSID:</label>";
-  html += "<input type='text' id='ssid' name='ssid' value='" + String(ssid) + "' required />";
-  html += "</div>";
-  html += "<div class='input-group'>";
-  html += "<label for='password'>Password:</label>";
-  html += "<input type='text' id='password' name='password' value='" + String(password) + "' required />";
-  html += "</div>";
-  html += "<div class='input-group'>";
-  html += "<label for='serverName'>Server Name:</label>";
-  html += "<input type='text' id='serverName' name='serverName' value='" + String(serverName) + "' required />";
-  html += "</div>";
-  html += "<div class='input-group'>";
-  html += "<label for='serverPort'>Server Port:</label>";
-  html += "<input type='number' id='serverPort' name='serverPort' value='" + String(serverPort) + "' required />";
-  html += "</div>";
-  html += "<div class='input-group'>";
-  html += "<label for='pictureInterval'>Picture Interval (ms):</label>";
-  html += "<input type='number' id='pictureInterval' name='pictureInterval' value='" + String(pictureInterval) + "' required />";
-  html += "</div>";
-  html += "<div class='input-group'>";
-  html += "<div class='switch'>";
-  html += "<label for='checkboxCamera'>Camera:</label>";
-  html += "<input type='checkbox' id='checkboxCamera' name='checkboxCamera'  class='default-action'";
-  if (isCameraOn)
-  {
-    html += " checked='checked'";
-  }
-  html += " />";
-  html += "<label class='slider' for='checkboxCamera'></label>";
-  html += "</div>";
-  html += "</div>";
-  html += "<input type='submit' value='Submit'>";
+  html += "<h1 style='text-align: center; font-size: 40px; margin-top: 100px'>Config ESP32 </h1>";
+  html += "<form action='/connect' method='POST'>";
+  html += "<div class='input-group'><label for='ssid'>SSID:</label><input type='text' id='ssid' name='ssid' value='" + String(ssid) + "' required /></div>";
+  html += "<div class='input-group'><label for='password'>Password:</label><input type='text' id='password' name='password' value='" + String(password) + "' required /></div>";
+  html += "<input id = 'btnConnect' type='submit' value='Kết nối Wifi' class='btn-submit'>";
   html += "</form>";
 
+  html += "<table style='width:60%; border: 1px solid #00aeff; padding: 10px;'>";
+  html += "<tr><th></th><th></th></tr>";
+
+  if (isConnectedWifi)
+  {
+    html += "<tr><td>Trạng thái</td><td style='font-weight: bold; color: rgb(0, 255, 0);'>Đã kết nối</td></tr>";
+    html += "<tr><td>Tên wifi</td><td>" + String(ssid) + "</td></tr>";
+    html += "<tr><td>Mật khẩu wifi</td><td>" + String(password) + "</td></tr>";
+    html += "<tr><td>Địa chỉ IP</td><td>" + localIP_Wifi + "</td></tr>";
+  }
+  else
+  {
+    html += "<tr><td>Trạng thái</td><td style='font-weight: bold; color: rgb(255, 0, 0);'>Chưa kết nối</td></tr>";
+    html += "<tr><td>Tên wifi</td><td>?-?-?-?</td></tr>";
+    html += "<tr><td>Mật khẩu wifi</td><td>?-?-?-?</td></tr>";
+    html += "<tr><td>Địa chỉ IP</td><td>?-?-?-?</td></tr>";
+  }
+  html += "</table>";
+
+  html += "<div class='input-group'><label for='serverName'>Server Name:</label><input type='text' id='serverName' name='serverName' value='" + String(serverName) + "' required /></div>";
+  html += "<div class='input-group'><label for='serverPort'>Server Port:</label><input type='number' id='serverPort' name='serverPort' value='" + String(serverPort) + "' required /></div>";
+  html += "<div class='input-group'><label for='pictureInterval'>Picture Interval (ms):</label><input type='number' id='pictureInterval' name='pictureInterval' value='" + String(pictureInterval) + "' required /></div>";
+  if (isCameraOn)
+  {
+    html += "<div class='input-group mt-20'><div class='switch'><label for='checkboxCamera'>Camera:</label><input type='checkbox' id='checkboxCamera' name='checkboxCamera' class='default-action' onclick='changeStatusLabel(this)' checked/><label class='slider' for='checkboxCamera'></label><span id='camera-status'>ON</span></div></div>";
+  }
+  else
+  {
+    html += "<div class='input-group mt-20'><div class='switch'><label for='checkboxCamera'>Camera:</label><input type='checkbox' id='checkboxCamera' name='checkboxCamera' class='default-action' onclick='changeStatusLabel(this)'/><label class='slider' for='checkboxCamera'></label><span id='camera-status'>OFF</span></div></div>";
+  }
+  html += "<input id = 'btn-change-config-server' type='submit' value='Cập nhật' class='btn-submit'>";
+
+  html += HomePageScript;
   return html;
+}
+
+String generateResponseJson(bool isSuccessNotify)
+{
+  // tao doi tuong JSON
+  StaticJsonDocument<200> doc;
+  // tao bo dem de luu tru du lieu JSON
+  char jsonBuffer[200];
+
+  // neu thong bao thanh cong
+  if (isSuccessNotify)
+  {
+    // them du lieu vao doi tuong JSON
+    doc["message"] = "Thông báo thành công!";
+    doc["error"] = false;
+  }
+  else
+  {
+    // them du lieu vao doi tuong JSON
+    doc["message"] = "Thông báo thất bại!";
+    doc["error"] = true;
+  }
+
+  // chuyen doi doi tuong JSON sang chuoi JSON
+  serializeJson(doc, jsonBuffer);
+
+  // tra ve chuoi JSON
+  return jsonBuffer;
 }

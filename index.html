@@ -1,0 +1,255 @@
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Document</title>
+        <style>
+            body {
+                background-color: black;
+                color: white;
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+                width: 100%;
+            }
+            form {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-top: 20px;
+            }
+            label {
+                margin-bottom: 10px;
+                font-size: 20px;
+            }
+            .input-group {
+                width: 60%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            input[type="text"],
+            input[type="number"] {
+                font-size: 15px;
+                font-weight: bold;
+                padding: 15px;
+                width: 100%;
+                padding-left: 30px;
+                margin-bottom: 10px;
+            }
+            input[type="submit"] {
+                text-decoration: none;
+                text-align: center;
+                margin-top: 20px;
+                padding: 10px;
+                font-size: 20px;
+                width: 20%;
+                background-color: #4caf50;
+                border: none;
+                color: white;
+                cursor: pointer;
+                border-radius: 5px;
+            }
+            input[type="submit"]:hover {
+                background-color: #216425;
+            }
+            .switch {
+                width: 100%;
+                position: relative;
+                line-height: 22px;
+                font-size: 16px;
+                height: 22px;
+            }
+            .switch input {
+                outline: 0;
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .slider {
+                width: 50px;
+                height: 30px;
+                border-radius: 22px;
+                cursor: pointer;
+                background-color: grey;
+            }
+            .slider,
+            .slider:before {
+                display: inline-block;
+                transition: 0.4s;
+            }
+            .slider:before {
+                position: relative;
+                content: "";
+                border-radius: 50%;
+                height: 16px;
+                width: 16px;
+                left: 4px;
+                top: 5px;
+                background-color: #fff;
+            }
+            input:checked + .slider {
+                background-color: #ff3034;
+            }
+            input:checked + .slider:before {
+                -webkit-transform: translateX(26px);
+                transform: translateX(26px);
+            }
+
+            /* 
+            
+            ".btn-submit:disabled { background-color: #216425; cursor: not-allowed;}"
+    "table tr td{ padding: 10px;}"
+    "table tr th, td:first-child{ width: 50%;}"
+    ".disable{ pointer-events: none; background-color: #216425 !important;}"
+    "table tr:nth-child(2) td:nth-child(2){ font-size: 30px; color: green;}"
+    ".flex-direction-row{ display: flex; flex-direction:row !important}"
+    ".mt-20{ margin-top: 20px;}"
+            
+            */
+
+            .btn-submit:disabled {
+                background-color: #216425;
+                cursor: not-allowed;
+            }
+            table tr td {
+                padding: 10px;
+            }
+            table tr th,
+            td:first-child {
+                width: 50%;
+            }
+            .disable {
+                pointer-events: none;
+                background-color: #216425 !important;
+            }
+            table tr:nth-child(2) td:nth-child(2) {
+                font-size: 30px;
+                color: green;
+            }
+            .flex-direction-row {
+                display: flex;
+                flex-direction: row !important;
+            }
+            .mt-20 {
+                margin-top: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1 style="text-align: center; font-size: 40px; margin-top: 100px">
+            Config ESP32
+        </h1>
+        <form action="/connect" method="POST">
+            <div class="input-group">
+                <label for="ssid">SSID:</label
+                ><input type="text" id="ssid" name="ssid" value="ssid" />
+            </div>
+            <div class="input-group">
+                <label for="password">Password:</label
+                ><input
+                    type="text"
+                    id="password"
+                    name="password"
+                    value="password"
+                />
+            </div>
+            <button id="btnConnect" value="Kết nối Wifi" class="btn-submit">
+                fsfsd
+            </button>
+        </form>
+
+        <table style="width: 60%; border: 1px solid #00aeff; padding: 10px">
+            <tr>
+                <th></th>
+                <th></th>
+            </tr>
+            <tr>
+                <td>Trạng thái</td>
+                <td>serverPort</td>
+            </tr>
+            <tr>
+                <td>Tên WiFi</td>
+                <td>serverPort</td>
+            </tr>
+            <tr>
+                <td>Mật khẩu wifi</td>
+                <td>serverPort</td>
+            </tr>
+            <tr>
+                <td>Địa chỉ ip</td>
+                <td>serverPort</td>
+            </tr>
+        </table>
+
+        <div class="input-group">
+            <label for="serverName">Server Name:</label
+            ><input
+                type="text"
+                id="serverName"
+                name="serverName"
+                value="serverName"
+            />
+        </div>
+        <div class="input-group">
+            <label for="serverPort">Server Port:</label
+            ><input
+                type="number"
+                id="serverPort"
+                name="serverPort"
+                value="serverPort"
+            />
+        </div>
+        <div class="input-group">
+            <label for="pictureInterval">Picture Interval (ms):</label
+            ><input
+                type="number"
+                id="pictureInterval"
+                name="pictureInterval"
+                value="pictureInterval"
+                required
+            />
+        </div>
+        <div class="input-group">
+            <div class="switch">
+                <label for="checkboxCamera">Camera:</label
+                ><input
+                    type="checkbox"
+                    id="checkboxCamera"
+                    name="checkboxCamera"
+                    class="default-action"
+                /><label class="slider" for="checkboxCamera"></label>
+            </div>
+        </div>
+        <input
+            type="submit"
+            value="Cập nhật"
+            style="margin-bottom: 20px"
+            id="btn-change-config-server"
+        />
+
+        <script>
+            const btnConnect = document.getElementById("btnConnect");
+            btnConnect.addEventListener("click", function (){ const ssid=document.getElementById("ssid").value; const password=document.getElementById("password").value; btnConnect.classList.add("disable"); btnConnect.value="Connecting...";});
+
+            const camera_status_label=document.getElementById("camera-status"); function changeStatusLabel(checkbox){ if (checkbox.checked){ camera_status_label.innerHTML="ON";} else{ camera_status_label.innerHTML="OFF";}}
+
+            const btn_change_config_server=document.getElementById( "btn-change-config-server" );
+            btn_change_config_server.addEventListener("click", function () {
+                const camera_status =
+                    document.getElementById("checkboxCamera").checked;
+                const serverName = document.getElementById("serverName").value;
+                const serverPort = document.getElementById("serverPort").value;
+                const pictureInterval =
+                    document.getElementById("pictureInterval").value;
+
+                btn_change_config_server.classList.add("disable");
+                btn_change_config_server.value = "Updating...";
+                fetch( `/config?camera_status=${camera_status}&serverName=${serverName}&serverPort=${serverPort}&pictureInterval=${pictureInterval}`, { method: "GET",} ) .then((response)=>{ return response.json();}) .then((data)=>{ console.log(data); btn_change_config_server.classList.remove("disable"); btn_change_config_server.value="Cập nhật";}) .catch((error)=>{ console.log(error); btn_change_config_server.classList.remove("disable"); btn_change_config_server.value="Cập nhật";});
+            });
+        </script>
+    </body>
+</html>

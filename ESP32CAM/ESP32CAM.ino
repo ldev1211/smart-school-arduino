@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <WebServer.h>
 #include <driver/ledc.h>
+#include <EEPROM.h>
 
 //
 // WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
@@ -38,6 +39,7 @@
 
 #define FLASH_GPIO_NUM 4
 #define CAMERA_LED_NUM 33
+#define EEPROM_SIZE 110
 
 const int LEDC_CHANNEL = 0;         // Kênh LEDC được sử dụng
 const int LEDC_FREQ_HZ = 5000;      // Tần số PWM (Hz)
@@ -59,8 +61,8 @@ const int apPort = 80;           // Cổng của Web Server trong chế độ AP
 const char *serverPath = "/arduino/postFile?room=1B18"; // Hằng số cho server path
 const char *fileName = "file";                          // Hằng số cho file name
 
-char ssid[32] = "virus.exe";
-char password[32] = "123456789";
+char ssid[32] = "";
+char password[32] = "";
 char serverName[32] = "192.168.1.3";
 int serverPort = 3000;
 int pictureInterval = 5000;
@@ -80,6 +82,8 @@ void setup()
 
   // config camera
   configCamera();
+
+  turnOffCamera();
 
   ledcSetup(LEDC_CHANNEL, LEDC_FREQ_HZ, LEDC_RESOLUTION);
   ledcAttachPin(FLASH_GPIO_NUM, LEDC_CHANNEL);
@@ -105,6 +109,9 @@ void setup()
   Serial.println("AP mode started successfully!!");
   Serial.print("AP address: ");
   Serial.println(WiFi.softAPIP());
+
+  loadWifiConfigFromEEPROM();
+  loadServerConfigFromEEPROM();
 
   connectToWifi();
 
@@ -457,6 +464,8 @@ void handleOnChangeServerConfig()
   serverPort = newServerPort;
   pictureInterval = newPictureInterval;
 
+  saveServerConfigToEEPROM();
+
   // print
 
   Serial.println("Server config has changed: ");
@@ -497,12 +506,16 @@ bool connectToWifi()
 
     localIP_Wifi = WiFi.localIP().toString();
     isConnectedWifi = true;
+
+    turnOnCamera();
+
+    saveWifiConfigToEEPROM();
+
+    return true;
   }
   else
   {
     Serial.println("Failed to connect to WiFi");
-    return false;
-
     isConnectedWifi = false;
   }
 
@@ -634,4 +647,82 @@ String generateResponseJson(bool isSuccessNotify)
 
   // tra ve chuoi JSON
   return jsonBuffer;
+}
+
+void saveWifiConfigToEEPROM()
+{
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Write SSID to EEPROM
+  int address = 0;
+  EEPROM.put(address, ssid);
+  address += sizeof(ssid);
+
+  // Write password to EEPROM
+  EEPROM.put(address, password);
+
+  EEPROM.commit();
+
+  EEPROM.end();
+}
+
+void loadWifiConfigFromEEPROM()
+{
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Read SSID from EEPROM
+  int address = 0;
+  EEPROM.get(address, ssid);
+  address += sizeof(ssid);
+
+  // Read password from EEPROM
+  EEPROM.get(address, password);
+
+  EEPROM.end();
+}
+
+void saveServerConfigToEEPROM()
+{
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Write server name to EEPROM
+  int address = 0;
+  address += sizeof(ssid);
+  address += sizeof(password);
+
+  EEPROM.put(address, serverName);
+  address += sizeof(serverName);
+
+  // Write server port to EEPROM
+  EEPROM.put(address, serverPort);
+  address += sizeof(serverPort);
+
+  // Write picture interval to EEPROM
+  EEPROM.put(address, pictureInterval);
+
+  EEPROM.commit();
+
+  EEPROM.end();
+}
+
+void loadServerConfigFromEEPROM()
+{
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Read server name from EEPROM
+  int address = 0;
+  address += sizeof(ssid); // servername saved after password
+  address += sizeof(password);
+
+  EEPROM.get(address, serverName);
+  address += sizeof(serverName);
+
+  // Read server port from EEPROM
+  EEPROM.get(address, serverPort);
+  address += sizeof(serverPort);
+
+  // Read picture interval from EEPROM
+  EEPROM.get(address, pictureInterval);
+
+  EEPROM.end();
 }

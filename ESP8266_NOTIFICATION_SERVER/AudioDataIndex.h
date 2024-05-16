@@ -7,11 +7,11 @@
 // create list with item as key is ClassCode and value is ClassName
 
 std::map<String, String> ClassCodeAudioMap = {
-    {"LH1", "Lap trinh web"},
-    {"LH2", "Lap trinh di dong"},
-    {"LH3", "Lap trinh nhung"},
-    {"LH4", "Lap trinh game"},
-    {"LH5", "Lap trinh ung dung"},
+    {"1", "Lap trinh web"},
+    {"2", "Lap trinh di dong"},
+    {"3", "Lap trinh nhung"},
+    {"4", "Lap trinh game"},
+    {"5", "Lap trinh ung dung"},
 };
 
 /*

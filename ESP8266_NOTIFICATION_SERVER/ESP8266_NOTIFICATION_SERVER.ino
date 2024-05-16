@@ -2,6 +2,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 
 #include <SPI.h>
 #include <Wire.h>
@@ -51,9 +52,17 @@ void playAudio(int folderNum, int trackNum);
 String generateResponseJson(bool isSuccessNotify);
 String generateHomePageHtml();
 int getIndexAudio(std::map<String, String> list, String targetString);
+void connectToWifi();
+void displayDefaultText(String text);
+void showMessage(String message, int fontSize);
+void handleTest();
+void saveWiFiConfigToEEPROM();
+void loadWiFiConfigFromEEPROM();
+void turnOnLed();
+void turnOffLed();
 
-String wifi_ssid = "Toan Thang";
-String wifi_password = "15012002";
+String wifi_ssid = "";
+String wifi_password = "";
 String localIP_Wifi = ""; // IP address of the ESP8266 on the local network
 
 bool isWifiConnected = false;
@@ -79,6 +88,7 @@ void setup()
   // Init serial port for DFPlayer Mini
   softwareSerial.begin(9600);
   pinMode(D3, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC))
   {
@@ -110,10 +120,9 @@ void setup()
 
   displayDefaultText("WelCome!");
 
-  connectToWifi();
+  loadWiFiConfigFromEEPROM();
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  connectToWifi();
 }
 void loop()
 {
@@ -164,7 +173,7 @@ void handleOnNotifyRequest()
   String classCode = server.arg("class_code");
   String studentCode = server.arg("student_code");
   String error = server.arg("error");
-  int errorType = server.arg("error_type").toInt();
+  int cause = server.arg("cause").toInt();
 
   // Hiển thị dữ liệu POST trên Serial Monitor
   Serial.println("Class Code: " + classCode);
@@ -183,14 +192,24 @@ void handleOnNotifyRequest()
   Serial.println("audioClassNameIndex: " + String(audioClassNameIndex));
   Serial.println("audioStudentNameIndex: " + String(audioStudentNameIndex));
 
-  if (error == "true" || audioClassNameIndex == 0 || audioStudentNameIndex == 0)
+  if (error == "true")
   {
     String json = generateResponseJson(true);
     server.send(404, "application/json", json);
     hasNotify = true;
     lastTimeNotify = millis();
-    showMessage("Unknow!!!");
-    playAudio(FOLDER_ERROR, errorType); // khong the nhan dien duoc
+    showMessage("Pay attention!!!", 1);
+    playAudio(FOLDER_ERROR, cause); // cau = 1 +> khong the nhan dien, 2 => qua gio diem danh, 3 => chua toi gio diem danh, 4 => da diem danh roi
+    return;
+  }
+
+  if (audioClassNameIndex == 0 || audioStudentNameIndex == 0)
+  {
+    String json = generateResponseJson(true);
+    server.send(404, "application/json", json);
+    hasNotify = true;
+    lastTimeNotify = millis();
+    showMessage("Unknow!!!", 2);
     return;
   }
 
@@ -201,7 +220,7 @@ void handleOnNotifyRequest()
   String className = ClassCodeAudioMap[classCode];
   String studentName = StudentCodeAudioMap[studentCode];
 
-  // 
+  //
   hasNotify = true;
   lastTimeNotify = millis();
 
@@ -248,11 +267,11 @@ void updateScreen(String studentCode, String className, String studentName)
   display.display();
 }
 
-void showMessage(String message)
+void showMessage(String message, int fontSize)
 {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(2);
+  display.setTextSize(fontSize);
   display.setCursor(10, 30);
   display.println(message);
   display.display();
@@ -374,6 +393,8 @@ int getIndexAudio(std::map<String, String> list, String targetString)
 
 void connectToWifi()
 {
+  turnOffLed();
+
   int times = 0; // time try to connect wifi
   WiFi.begin(wifi_ssid, wifi_password);
   while (WiFi.status() != WL_CONNECTED && times < MAX_TIMES_TRY_CONNECT_WIFI)
@@ -390,6 +411,9 @@ void connectToWifi()
     Serial.println("Connected to WiFi");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+
+    saveWiFiConfigToEEPROM();
+    turnOnLed();
   }
   else
   {
@@ -417,4 +441,48 @@ void handleTest()
   String json = generateResponseJson(true);
   server.send(200, "application/json", json);
   return;
+}
+
+void saveWiFiConfigToEEPROM()
+{
+  int EEPROM_SIZE = 100;
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Write SSID to EEPROM
+  int address = 0;
+  EEPROM.put(address, wifi_ssid);
+  address += sizeof(wifi_ssid);
+
+  // Write password to EEPROM
+  EEPROM.put(address, wifi_password);
+
+  EEPROM.commit();
+
+  EEPROM.end();
+}
+
+void loadWiFiConfigFromEEPROM()
+{
+  int EEPROM_SIZE = 100;
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Read SSID from EEPROM
+  int address = 0;
+  EEPROM.get(address, wifi_ssid);
+  address += sizeof(wifi_ssid);
+
+  // Read password from EEPROM
+  EEPROM.get(address, wifi_password);
+
+  EEPROM.end();
+}
+
+void turnOnLed()
+{
+  digitalWrite(LED_BUILTIN, LOW);
+}
+
+void turnOffLed()
+{
+  digitalWrite(LED_BUILTIN, HIGH);
 }

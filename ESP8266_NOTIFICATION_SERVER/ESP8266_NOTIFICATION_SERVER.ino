@@ -38,6 +38,7 @@ const int MAX_TIMES_TRY_CONNECT_WIFI = 100;
 const int DELAY_TIME_CONNECT_WIFI = 200;
 const int FOLDER_CLASS_NAME = 1;
 const int FOLDER_STUDENT_NAME = 2;
+const int FOLDER_ERROR = 3;
 const int MAX_AUDIO = 30;
 
 // function prototype
@@ -60,7 +61,7 @@ bool canPlayAudio = true;
 int volume = 25;
 unsigned long lastTimeNotify = 0; // Last time the notification on screen was implemented
 bool hasNotify = false;           // Check if the notification on screen has been implemented
-int timeNotify = 20000;            // Time to notify on screen in milliseconds
+int timeNotify = 20000;           // Time to notify on screen in milliseconds
 
 // Create the Player object
 // DFRobotDFPlayerMini player;
@@ -104,6 +105,7 @@ void setup()
   server.on("/connect", HTTP_POST, handleOnConnectWifi);
   server.on("/notify", HTTP_POST, handleOnNotifyRequest);
   server.on("/speaker", HTTP_GET, handleOnChangeSpeakerStatus);
+  server.on("/test_audio", HTTP_GET, handleTest);
   server.begin();
 
   displayDefaultText("WelCome!");
@@ -129,6 +131,7 @@ void loop()
     unsigned long currentTime = millis();
     if (currentTime - lastTimeNotify >= timeNotify)
     {
+      hasNotify = false;
       displayDefaultText("WelCome!");
     }
   }
@@ -160,6 +163,8 @@ void handleOnNotifyRequest()
   // Lấy dữ liệu POST từ request
   String classCode = server.arg("class_code");
   String studentCode = server.arg("student_code");
+  String error = server.arg("error");
+  int errorType = server.arg("error_type").toInt();
 
   // Hiển thị dữ liệu POST trên Serial Monitor
   Serial.println("Class Code: " + classCode);
@@ -178,10 +183,14 @@ void handleOnNotifyRequest()
   Serial.println("audioClassNameIndex: " + String(audioClassNameIndex));
   Serial.println("audioStudentNameIndex: " + String(audioStudentNameIndex));
 
-  if (audioClassNameIndex == 0 || audioStudentNameIndex == 0)
+  if (error == "true" || audioClassNameIndex == 0 || audioStudentNameIndex == 0)
   {
-    String json = generateResponseJson(false);
+    String json = generateResponseJson(true);
     server.send(404, "application/json", json);
+    hasNotify = true;
+    lastTimeNotify = millis();
+    showMessage("Unknow!!!");
+    playAudio(FOLDER_ERROR, errorType); // khong the nhan dien duoc
     return;
   }
 
@@ -239,6 +248,16 @@ void updateScreen(String studentCode, String className, String studentName)
   display.display();
 }
 
+void showMessage(String message)
+{
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(10, 30);
+  display.println(message);
+  display.display();
+}
+
 void playAudio(int folderNum, int trackNum)
 {
   // Start communication with DFPlayer Mini
@@ -254,7 +273,7 @@ void playAudio(int folderNum, int trackNum)
     // // Wait until audio finishes playing
     while (player.isPlaying())
     {
-      delay(5); // Delay for a short time
+      delay(10); // Delay for a short time
     }
   }
   else
@@ -387,4 +406,15 @@ void displayDefaultText(String text)
   display.setCursor(20, 30);
   display.println(text);
   display.display();
+}
+
+void handleTest()
+{
+  int folderTrack = server.arg("folder_track").toInt();
+  int trackNum = server.arg("track_num").toInt();
+  playAudio(folderTrack, trackNum);
+
+  String json = generateResponseJson(true);
+  server.send(200, "application/json", json);
+  return;
 }

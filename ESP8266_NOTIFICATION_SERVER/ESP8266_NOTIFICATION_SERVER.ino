@@ -35,6 +35,8 @@ static const uint8_t PIN_MP3_RX = D3; // Connects to module's TX
 #define OLED_CS 15
 #define OLED_RESET 4
 
+#define EEPROM_SIZE 100
+
 const int MAX_TIMES_TRY_CONNECT_WIFI = 100;
 const int DELAY_TIME_CONNECT_WIFI = 200;
 const int FOLDER_CLASS_NAME = 1;
@@ -58,6 +60,8 @@ void showMessage(String message, int fontSize);
 void handleTest();
 void saveWiFiConfigToEEPROM();
 void loadWiFiConfigFromEEPROM();
+void saveSpeakerStatusToEEPROM();
+void loadSpeakerStatusFromEEPROM();
 void turnOnLed();
 void turnOffLed();
 
@@ -121,6 +125,7 @@ void setup()
   displayDefaultText("WelCome!");
 
   loadWiFiConfigFromEEPROM();
+  loadSpeakerStatusFromEEPROM();
 
   connectToWifi();
 }
@@ -155,6 +160,8 @@ void handleOnChangeSpeakerStatus()
   Serial.println("Speaker Status: " + String(canPlayAudio));
   Serial.println("Volume: " + String(volume));
 
+  saveSpeakerStatusToEEPROM();
+
   String json = generateResponseJson(true);
   server.send(200, "application/json", json);
   return;
@@ -175,6 +182,17 @@ void handleOnNotifyRequest()
   String error = server.arg("error");
   int cause = server.arg("cause").toInt();
 
+  if (error == "true")
+  {
+    String json = generateResponseJson(true);
+    server.send(404, "application/json", json);
+    hasNotify = true;
+    lastTimeNotify = millis();
+    showMessage("Pay attention!!!", 1);
+    playAudio(FOLDER_ERROR, cause); // cau = 1 +> khong the nhan dien, 2 => qua gio diem danh, 3 => chua toi gio diem danh, 4 => da diem danh roi
+    return;
+  }
+
   // Hiển thị dữ liệu POST trên Serial Monitor
   Serial.println("Class Code: " + classCode);
   Serial.println("Student Code: " + studentCode);
@@ -191,17 +209,6 @@ void handleOnNotifyRequest()
 
   Serial.println("audioClassNameIndex: " + String(audioClassNameIndex));
   Serial.println("audioStudentNameIndex: " + String(audioStudentNameIndex));
-
-  if (error == "true")
-  {
-    String json = generateResponseJson(true);
-    server.send(404, "application/json", json);
-    hasNotify = true;
-    lastTimeNotify = millis();
-    showMessage("Pay attention!!!", 1);
-    playAudio(FOLDER_ERROR, cause); // cau = 1 +> khong the nhan dien, 2 => qua gio diem danh, 3 => chua toi gio diem danh, 4 => da diem danh roi
-    return;
-  }
 
   if (audioClassNameIndex == 0 || audioStudentNameIndex == 0)
   {
@@ -445,7 +452,6 @@ void handleTest()
 
 void saveWiFiConfigToEEPROM()
 {
-  int EEPROM_SIZE = 100;
   EEPROM.begin(EEPROM_SIZE);
 
   // Write SSID to EEPROM
@@ -463,7 +469,6 @@ void saveWiFiConfigToEEPROM()
 
 void loadWiFiConfigFromEEPROM()
 {
-  int EEPROM_SIZE = 100;
   EEPROM.begin(EEPROM_SIZE);
 
   // Read SSID from EEPROM
@@ -473,6 +478,44 @@ void loadWiFiConfigFromEEPROM()
 
   // Read password from EEPROM
   EEPROM.get(address, wifi_password);
+
+  EEPROM.end();
+}
+
+void saveSpeakerStatusToEEPROM() {
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Write SSID to EEPROM
+  int address = 0;
+  address += sizeof(wifi_ssid);
+  address += sizeof(wifi_password);
+
+  // Write speaker status to EEPROM
+  EEPROM.put(address, canPlayAudio);
+  address += sizeof(canPlayAudio);
+
+  // Write volume to EEPROM
+  EEPROM.put(address, volume);
+
+  EEPROM.commit();
+
+  EEPROM.end();
+}
+
+void loadSpeakerStatusFromEEPROM() {
+  EEPROM.begin(EEPROM_SIZE);
+
+  // Read SSID from EEPROM
+  int address = 0;
+  address += sizeof(wifi_ssid);
+  address += sizeof(wifi_password);
+
+  // Read speaker status from EEPROM
+  EEPROM.get(address, canPlayAudio);
+  address += sizeof(canPlayAudio);
+
+  // Read volume from EEPROM
+  EEPROM.get(address, volume);
 
   EEPROM.end();
 }

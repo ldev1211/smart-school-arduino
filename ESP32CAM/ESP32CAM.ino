@@ -39,7 +39,7 @@
 
 #define FLASH_GPIO_NUM 4
 #define CAMERA_LED_NUM 33
-#define EEPROM_SIZE 110
+#define EEPROM_SIZE 120
 
 const int LEDC_CHANNEL = 0;         // Kênh LEDC được sử dụng
 const int LEDC_FREQ_HZ = 5000;      // Tần số PWM (Hz)
@@ -58,7 +58,7 @@ const char *apSSID = "ESP32-AP"; // Tên của mạng Wi-Fi riêng của ESP32
 const char *apPassword = "";     // Mật khẩu của mạng Wi-Fi riêng
 const int apPort = 80;           // Cổng của Web Server trong chế độ AP
 
-const char *serverPath = "/arduino/postFile?room=1B18"; // Hằng số cho server path
+const char *serverPath = "/arduino/postFile?room="; // Hằng số cho server path
 const char *fileName = "file";                          // Hằng số cho file name
 
 char ssid[32] = "";
@@ -68,6 +68,7 @@ int serverPort = 3000;
 int pictureInterval = 5000;
 bool isCameraOn = true;
 bool isConnectedWifi = false;
+String roomName = "1B18";
 String localIP_Wifi = "";
 
 unsigned long latestPicture = 0; // last time image was sent (in milliseconds)
@@ -186,7 +187,7 @@ String takePicture()
 
     Serial.print("Sending Image");
 
-    client.println(String("POST ") + serverPath + " HTTP/1.1");
+    client.println(String("POST ") + serverPath + roomName + " HTTP/1.1");
     client.println(String("Host: ") + serverName);
     client.println("Content-Length: " + String(totalLen));
     client.println("Content-Type: multipart/form-data; boundary=" + boundary);
@@ -448,6 +449,7 @@ void handleOnChangeServerConfig()
   String newServerName = server.arg("serverName");
   int newServerPort = server.arg("serverPort").toInt();
   int newPictureInterval = server.arg("pictureInterval").toInt();
+  roomName = server.arg("roomName");
 
   // Lưu giá trị cấu hình vào biến tương ứng
 
@@ -607,6 +609,7 @@ String generateHomePageHtml()
   html += "<div class='input-group'><label for='serverName'>Server Name:</label><input type='text' id='serverName' name='serverName' value='" + String(serverName) + "' required /></div>";
   html += "<div class='input-group'><label for='serverPort'>Server Port:</label><input type='number' id='serverPort' name='serverPort' value='" + String(serverPort) + "' required /></div>";
   html += "<div class='input-group'><label for='pictureInterval'>Picture Interval (ms):</label><input type='number' id='pictureInterval' name='pictureInterval' value='" + String(pictureInterval) + "' required /></div>";
+  html += "<div class='input-group'><label for='roomName'>Room Name:</label><input type='text' id='roomName' name='roomName' value='" + roomName + "' required /></div>";
   if (isCameraOn)
   {
     html += "<div class='input-group mt-20'><div class='switch'><label for='checkboxCamera'>Camera:</label><input type='checkbox' id='checkboxCamera' name='checkboxCamera' class='default-action' onclick='changeStatusLabel(this)' checked/><label class='slider' for='checkboxCamera'></label><span id='camera-status'>ON</span></div></div>";
@@ -699,6 +702,9 @@ void saveServerConfigToEEPROM()
 
   // Write picture interval to EEPROM
   EEPROM.put(address, pictureInterval);
+  address += sizeof(pictureInterval);
+
+  EEPROM.put(address, roomName);
 
   EEPROM.commit();
 
@@ -723,6 +729,9 @@ void loadServerConfigFromEEPROM()
 
   // Read picture interval from EEPROM
   EEPROM.get(address, pictureInterval);
+  address += sizeof(pictureInterval);
+
+  EEPROM.get(address, roomName);
 
   EEPROM.end();
 }

@@ -55,8 +55,9 @@ String HomePageScript = {
     "const serverName = document.getElementById('serverName').value;"
     "const serverPort = document.getElementById('serverPort').value;"
     "const pictureInterval = document.getElementById('pictureInterval').value;"
+    "const roomName = document.getElementById('roomName').value;"
     "btn_change_config_server.classList.add('disable');"
     "btn_change_config_server.value = 'Updating...';"
-    "fetch( `/config?camera_status=${camera_status}&serverName=${serverName}&serverPort=${serverPort}&pictureInterval=${pictureInterval}`, { method: 'GET',} ) .then((response)=>{ return response.json();}) .then((data)=>{ console.log(data); btn_change_config_server.classList.remove('disable'); btn_change_config_server.value='Cập nhật';}) .catch((error)=>{ console.log(error); btn_change_config_server.classList.remove('disable'); btn_change_config_server.value='Cập nhật';});"
+    "fetch( `/config?camera_status=${camera_status}&serverName=${serverName}&serverPort=${serverPort}&pictureInterval=${pictureInterval}&roomName=${roomName}`, { method: 'GET',} ) .then((response)=>{ return response.json();}) .then((data)=>{ console.log(data); btn_change_config_server.classList.remove('disable'); btn_change_config_server.value='Cập nhật';}) .catch((error)=>{ console.log(error); btn_change_config_server.classList.remove('disable'); btn_change_config_server.value='Cập nhật';});"
     "});"
     "</script>"};
